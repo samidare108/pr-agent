@@ -284,47 +284,6 @@ class GithubProvider(GitProvider):
                     continue
 
                 patch = file.patch
-
-                # ==== 早乙女さん専用 EUC-JPパッチ自作処理 ====
-                if patch:
-                    try:
-                        import difflib
-                        def fetch_and_decode(sha):
-                            try:
-                                # 生のバイトデータを取得
-                                content = self.repo.get_contents(file.filename, ref=sha).decoded_content
-                                try:
-                                    return content.decode('utf-8')
-                                except UnicodeDecodeError:
-                                    return content.decode('euc_jp')
-                            except Exception:
-                                return "" # 新規作成ファイルなどの場合は空文字
-
-                        # 変更前と変更後のファイル内容を正しく取得
-                        base_str = fetch_and_decode(self.pr.base.sha)
-                        head_str = fetch_and_decode(self.pr.head.sha)
-
-                        if head_str: # 削除されたファイルでなければ差分を作成
-                            # 綺麗な日本語で差分（Patch）を作り直す
-                            diff_lines = list(difflib.unified_diff(
-                                base_str.splitlines(keepends=True),
-                                head_str.splitlines(keepends=True),
-                                fromfile=file.filename,
-                                tofile=file.filename
-                            ))
-
-                            # difflib特有のヘッダ（--- と +++）は除外する
-                            patch_body = [line for line in diff_lines if not (line.startswith('--- ') or line.startswith('+++ '))]
-                            if patch_body:
-                                patch = "".join(patch_body)
-                                try:
-                                    file.patch = patch # 他の関数でも参照できるように上書き
-                                except:
-                                    pass
-                    except Exception as e:
-                        print(f"DEBUG: EUC-JP patch generation failed: {e}")
-                # ==========================================
-
                 if is_close_to_rate_limit:
                     new_file_content_str = ""
                     original_file_content_str = ""
@@ -377,10 +336,28 @@ class GithubProvider(GitProvider):
                     num_plus_lines = len([line for line in patch_lines if line.startswith('+')])
                     num_minus_lines = len([line for line in patch_lines if line.startswith('-')])
 
+                # ==== 早乙女さん専用 究極の差分再構築パッチ ====
+                if original_file_content_str and new_file_content_str:
+                    try:
+                        import difflib
+                        diff_lines = list(difflib.unified_diff(
+                            original_file_content_str.splitlines(keepends=True),
+                            new_file_content_str.splitlines(keepends=True),
+                            fromfile=file.filename,
+                            tofile=file.filename
+                        ))
+                        patch_body = [line for line in diff_lines if not (line.startswith('--- ') or line.startswith('+++ '))]
+                        if patch_body:
+                            patch = "".join(patch_body)
+                    except Exception as e:
+                        print(f"DEBUG: diff creation failed {e}")
+                # ==========================================
+                
                 file_patch_canonical_structure = FilePatchInfo(original_file_content_str, new_file_content_str, patch,
                                                                file.filename, edit_type=edit_type,
                                                                num_plus_lines=num_plus_lines,
                                                                num_minus_lines=num_minus_lines,)
+
                 diff_files.append(file_patch_canonical_structure)
             if invalid_files_names:
                 get_logger().info(f"Filtered out files with invalid extensions: {invalid_files_names}")
