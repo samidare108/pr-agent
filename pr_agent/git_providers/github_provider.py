@@ -952,7 +952,17 @@ class GithubProvider(GitProvider):
         )
 
     def _get_pr_file_content(self, file: FilePatchInfo, sha: str) -> str:
-        return self.get_pr_file_content(file.filename, sha)
+        # ==== 早乙女さん専用 EUC-JPファイル全体デコード処理 ====
+        try:
+            # 生のバイトデータを直接取得する
+            content = self.repo.get_contents(file.filename, ref=sha).decoded_content
+            try:
+                return content.decode('utf-8')
+            except UnicodeDecodeError:
+                return content.decode('euc_jp') # UTF-8でダメならEUC-JPでデコード
+        except Exception:
+            # 万が一取得に失敗した場合は、元の処理（デフォルト）にフォールバック
+            return self.get_pr_file_content(file.filename, sha)
 
     def publish_labels(self, pr_types):
         try:
