@@ -14,6 +14,7 @@ from pr_agent.algo import MAX_TOKENS
 from pr_agent.algo.ai_handlers.base_ai_handler import BaseAiHandler
 from pr_agent.algo.ai_handlers.litellm_ai_handler import LiteLLMAIHandler
 from pr_agent.algo.git_patch_processing import decouple_and_convert_to_hunks_with_lines_numbers
+from pr_agent.algo.legacy_encoding_diff import repair_prompt_diff
 from pr_agent.algo.pr_processing import (add_ai_metadata_to_diff_files,
                                          get_pr_diff, get_pr_multi_diffs,
                                          retry_with_fallback_models)
@@ -385,8 +386,12 @@ class PRCodeSuggestions:
 
     async def _get_prediction(self, model: str, patches_diff: str, patches_diff_no_line_number: str) -> dict:
         variables = copy.deepcopy(self.vars)
-        variables["diff"] = patches_diff  # update diff
-        variables["diff_no_line_numbers"] = patches_diff_no_line_number  # update diff
+        variables["diff"] = repair_prompt_diff(
+            self.git_provider, patches_diff, add_line_numbers_to_hunks=True,
+        )
+        variables["diff_no_line_numbers"] = repair_prompt_diff(
+            self.git_provider, patches_diff_no_line_number, add_line_numbers_to_hunks=False,
+        )
         environment = Environment(undefined=StrictUndefined)
         system_prompt = environment.from_string(self.pr_code_suggestions_prompt_system).render(variables)
         user_prompt = environment.from_string(self.pr_code_suggestions_prompt_user).render(variables)

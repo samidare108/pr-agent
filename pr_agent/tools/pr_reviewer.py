@@ -12,6 +12,7 @@ from pr_agent.algo.ai_handlers.litellm_ai_handler import LiteLLMAIHandler
 from pr_agent.algo.pr_processing import (add_ai_metadata_to_diff_files,
                                          get_pr_diff,
                                          retry_with_fallback_models)
+from pr_agent.algo.legacy_encoding_diff import repair_prompt_diff
 from pr_agent.algo.token_handler import TokenHandler
 from pr_agent.algo.utils import (ModelType, PRReviewHeader,
                                  convert_to_markdown_v2, github_action_output,
@@ -211,7 +212,11 @@ class PRReviewer:
             A string representing the AI prediction for the pull request review.
         """
         variables = copy.deepcopy(self.vars)
-        variables["diff"] = self.patches_diff  # update diff
+        variables["diff"] = repair_prompt_diff(
+            self.git_provider,
+            self.patches_diff,
+            add_line_numbers_to_hunks=True,
+        )
 
         environment = Environment(undefined=StrictUndefined)
         system_prompt = environment.from_string(get_settings().pr_review_prompt.system).render(variables)

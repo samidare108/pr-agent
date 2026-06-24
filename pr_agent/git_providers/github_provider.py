@@ -19,6 +19,7 @@ from starlette_context import context
 from ..algo.file_filter import filter_ignored
 from ..algo.git_patch_processing import extract_hunk_headers
 from ..algo.language_handler import is_valid_file
+from ..algo.legacy_encoding_diff import decode_legacy_bytes
 from ..algo.types import EDIT_TYPE
 from ..algo.utils import (PRReviewHeader, Range, clip_tokens,
                           find_line_number_of_relevant_line_in_file,
@@ -332,33 +333,9 @@ class GithubProvider(GitProvider):
                     num_plus_lines = file.additions
                     num_minus_lines = file.deletions
                 else:
-                    patch_lines = patch.splitlines(keepends=True)
+                    patch_lines = (patch or "").splitlines(keepends=True)
                     num_plus_lines = len([line for line in patch_lines if line.startswith('+')])
                     num_minus_lines = len([line for line in patch_lines if line.startswith('-')])
-
-                    # ==== 早乙女さん専用 究極の差分再構築パッチ ====
-                    try:
-                        import difflib
-                        
-                        safe_old_str = original_file_content_str if original_file_content_str else ""
-                        safe_new_str = new_file_content_str if new_file_content_str else ""
-                        
-                        old_lines = safe_old_str.splitlines(keepends=True)
-                        new_lines = safe_new_str.splitlines(keepends=True)
-                        
-                        diff_lines = list(difflib.unified_diff(
-                            old_lines,
-                            new_lines,
-                            fromfile=file.filename,
-                            tofile=file.filename
-                        ))
-                        patch_body = [line for line in diff_lines if not (line.startswith('--- ') or line.startswith('+++ '))]
-                        
-                        # 逃げ道を塞ぎ、問答無用でパッチを上書きする
-                        patch = "".join(patch_body)
-                    except Exception as e:
-                        patch = f"DEBUG_DIFF_ERROR: {e}"
-                    # ==========================================
 
                 file_patch_canonical_structure = FilePatchInfo(original_file_content_str, new_file_content_str, patch,
                                                                file.filename, edit_type=edit_type,
@@ -910,14 +887,10 @@ class GithubProvider(GitProvider):
 
     def get_pr_file_content(self, file_path: str, branch: str) -> str:
         try:
-            file_content_str = str(
-                self._get_repo()
-                .get_contents(file_path, ref=branch)
-                .decoded_content.decode()
-            )
+            raw = self._get_repo().get_contents(file_path, ref=branch).decoded_content
+            return decode_legacy_bytes(raw)
         except Exception:
-            file_content_str = ""
-        return file_content_str
+            return ""
 
     def create_or_update_pr_file(
         self, file_path: str, branch: str, contents="", message=""
@@ -935,19 +908,24 @@ class GithubProvider(GitProvider):
             branch=branch,
         )
 
-    def _get_pr_file_content(self, file: FilePatchInfo, sha: str) -> str:
-        # ==== 早乙女さん専用 EUC-JPファイル全体デコード処理 ====
+    def _get_pr_file_content(self, file, sha: str) -> str:
+        """
+        Fetch full file content at ref *sha*.
+
+        PyGithub's get_contents raises for paths that do not exist at *sha*
+        (e.g. newly added files on the merge-base commit) — return empty string.
+        """
         try:
-            # 【最大の原因】正しいPyGithubのオブジェクトは self.pr.base.repo でした
             repo = self.pr.head.repo if sha == self.pr.head.sha else self.pr.base.repo
-            content = repo.get_contents(file.filename, ref=sha).decoded_content
-            
-            try:
-                return content.decode('utf-8')
-            except UnicodeDecodeError:
-                return content.decode('euc_jp', errors='replace')
+            raw = repo.get_contents(file.filename, ref=sha).decoded_content
+            return decode_legacy_bytes(raw)
         except Exception as e:
-            print(f"DEBUG: get_contents error: {e}")
+            get_logger().debug(
+                "Could not load file content at ref",
+                filename=file.filename,
+                sha=sha,
+                artifact={"error": e},
+            )
             return ""
 
     def publish_labels(self, pr_types):

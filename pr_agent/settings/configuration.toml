@@ -40,6 +40,9 @@ allow_dynamic_context=true
 max_extra_lines_before_dynamic_context = 10 # will try to include up to 10 extra lines before the hunk in the patch, until we reach an enclosing function or class
 patch_extra_lines_before = 5 # Number of extra lines (+3 default ones) to include before each hunk in the patch
 patch_extra_lines_after = 1 # Number of extra lines (+3 default ones) to include after each hunk in the patch
+# Legacy Japanese / non-UTF-8 repositories (EUC-JP, CP932)
+legacy_encoding_repair = false # when true, rebuild prompt diff from decoded file contents before sending to the AI
+legacy_file_encodings = ["utf-8", "euc_jp", "cp932"] # encodings tried when decoding raw file bytes from the git provider
 secret_provider="" # "" (disabled), "google_cloud_storage", or "aws_secrets_manager" for secure secret management
 cli_mode=false
 output_relevant_configurations=false
