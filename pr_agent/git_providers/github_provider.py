@@ -939,15 +939,15 @@ class GithubProvider(GitProvider):
     def _get_pr_file_content(self, file: FilePatchInfo, sha: str) -> str:
         # ==== 早乙女さん専用 EUC-JPファイル全体デコード処理 ====
         try:
-            # 【大反省】self.repo_obj が正解でした……！
+            # 【重要】 self.repo_obj に修正します（文字列の self.repo だとエラーになります）
             content = self.repo_obj.get_contents(file.filename, ref=sha).decoded_content
             try:
                 return content.decode('utf-8')
             except UnicodeDecodeError:
                 return content.decode('euc_jp')
         except Exception as e:
-            # 新規ファイル等で古いファイルが存在しない場合（404エラー）は空文字を返す
-            print(f"DEBUG: get_contents failed: {e}")
+            # 404エラー（新規作成時の古いファイル取得など）の場合は空文字を返す
+            print(f"DEBUG: File not found or error. Returning empty. {e}")
             return ""
 
     def publish_labels(self, pr_types):
