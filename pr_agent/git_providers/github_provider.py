@@ -336,13 +336,14 @@ class GithubProvider(GitProvider):
                     num_plus_lines = len([line for line in patch_lines if line.startswith('+')])
                     num_minus_lines = len([line for line in patch_lines if line.startswith('-')])
 
-                # ==== 早乙女さん専用 究極の差分再構築パッチ ====
-                if original_file_content_str and new_file_content_str:
+                    # ==== 早乙女さん専用 究極の差分再構築パッチ ====
                     try:
                         import difflib
+                        old_lines = original_file_content_str.splitlines(keepends=True) if original_file_content_str else []
+                        new_lines = new_file_content_str.splitlines(keepends=True) if new_file_content_str else []
                         diff_lines = list(difflib.unified_diff(
-                            original_file_content_str.splitlines(keepends=True),
-                            new_file_content_str.splitlines(keepends=True),
+                            old_lines,
+                            new_lines,
                             fromfile=file.filename,
                             tofile=file.filename
                         ))
@@ -351,8 +352,8 @@ class GithubProvider(GitProvider):
                             patch = "".join(patch_body)
                     except Exception as e:
                         print(f"DEBUG: diff creation failed {e}")
-                # ==========================================
-                
+                    # ==========================================
+
                 file_patch_canonical_structure = FilePatchInfo(original_file_content_str, new_file_content_str, patch,
                                                                file.filename, edit_type=edit_type,
                                                                num_plus_lines=num_plus_lines,
