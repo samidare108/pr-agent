@@ -354,11 +354,9 @@ class GithubProvider(GitProvider):
                         ))
                         patch_body = [line for line in diff_lines if not (line.startswith('--- ') or line.startswith('+++ '))]
                         
-                        # 【最大の修正点】条件分岐を消し、GitHubの文字化けパッチを問答無用で上書きする！
+                        # 逃げ道を塞ぎ、問答無用でパッチを上書きする
                         patch = "".join(patch_body)
-                        
                     except Exception as e:
-                        # 万が一エラーが起きても文字化けには戻さず、エラー文をAIに読ませる
                         patch = f"DEBUG_DIFF_ERROR: {e}"
                     # ==========================================
 
@@ -938,19 +936,17 @@ class GithubProvider(GitProvider):
         )
 
     def _get_pr_file_content(self, file: FilePatchInfo, sha: str) -> str:
-        # ==== 早乙女さん専用 究極のデコード処理 ====
+        # ==== 早乙女さん専用 EUC-JPファイル全体デコード処理 ====
         try:
-            content = self.repo_obj.get_contents(file.filename, ref=sha).decoded_content
-            # UTF-8 -> EUC-JP -> Shift-JIS の順でエラーが出ないものを探す
-            for enc in ['utf-8', 'euc_jp', 'cp932', 'shift_jis']:
-                try:
-                    return content.decode(enc)
-                except UnicodeDecodeError:
-                    continue
-            # 全滅した場合は、文字化けを最小限に抑えて強制デコード（エラーで落とさない）
-            return content.decode('euc_jp', errors='replace')
+            # 【最大の原因】正しいPyGithubのオブジェクトは self.pr.base.repo でした
+            repo = self.pr.head.repo if sha == self.pr.head.sha else self.pr.base.repo
+            content = repo.get_contents(file.filename, ref=sha).decoded_content
+            
+            try:
+                return content.decode('utf-8')
+            except UnicodeDecodeError:
+                return content.decode('euc_jp', errors='replace')
         except Exception as e:
-            # 404（新規ファイル等）の場合は空文字を返す
             print(f"DEBUG: get_contents error: {e}")
             return ""
 
