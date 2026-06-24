@@ -9,6 +9,11 @@ from pr_agent.log import get_logger
 
 def safe_decode(byte_data: bytes) -> str:
     if not byte_data: return ""
+    
+    # debug
+    print("=== DEBUG RAW DATA ===", flush=True)
+    print(byte_data, flush=True)
+
     try: return byte_data.decode('utf-8')
     except UnicodeDecodeError:
         try: return byte_data.decode('euc_jp')
