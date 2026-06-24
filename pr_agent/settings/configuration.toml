@@ -43,6 +43,10 @@ patch_extra_lines_after = 1 # Number of extra lines (+3 default ones) to include
 # Legacy Japanese / non-UTF-8 repositories (EUC-JP, CP932)
 legacy_encoding_repair = false # when true, rebuild prompt diff from decoded file contents before sending to the AI
 legacy_file_encodings = ["utf-8", "euc_jp", "cp932"] # encodings tried when decoding raw file bytes from the git provider
+enable_extra_context_files = false # when true, attach extra_context_files and auto-discovered PHP includes to the prompt
+auto_php_include_context = true # when legacy_encoding_repair or enable_extra_context_files is on, scan + lines for PHP require/include
+extra_context_files = [] # manual repo-relative paths, e.g. ["src/Config/SystemConst.php"]
+max_extra_context_files = 10 # cap for manual + auto-discovered context files per PR
 secret_provider="" # "" (disabled), "google_cloud_storage", or "aws_secrets_manager" for secure secret management
 cli_mode=false
 output_relevant_configurations=false

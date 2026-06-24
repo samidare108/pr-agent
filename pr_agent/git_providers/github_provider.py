@@ -20,6 +20,7 @@ from ..algo.file_filter import filter_ignored
 from ..algo.git_patch_processing import extract_hunk_headers
 from ..algo.language_handler import is_valid_file
 from ..algo.legacy_encoding_diff import decode_legacy_bytes
+from ..algo.extra_context_files import load_extra_context_files
 from ..algo.types import EDIT_TYPE
 from ..algo.utils import (PRReviewHeader, Range, clip_tokens,
                           find_line_number_of_relevant_line_in_file,
@@ -49,6 +50,7 @@ class GithubProvider(GitProvider):
         self.github_user_id = None
         self.diff_files = None
         self.git_files = None
+        self._extra_context_files = None
         self.incremental = IncrementalPR(False)
         if pr_url and 'pull' in pr_url:
             self.set_pr(pr_url)
@@ -238,11 +240,15 @@ class GithubProvider(GitProvider):
             try:
                 diff_files = context.get("diff_files", None)
                 if diff_files:
+                    if self._extra_context_files is None:
+                        self._extra_context_files = self._load_extra_context_files(diff_files)
                     return diff_files
             except Exception:
                 pass
 
             if self.diff_files:
+                if self._extra_context_files is None:
+                    self._extra_context_files = self._load_extra_context_files(self.diff_files)
                 return self.diff_files
 
             # filter files using [ignore] patterns
@@ -347,6 +353,7 @@ class GithubProvider(GitProvider):
                 get_logger().info(f"Filtered out files with invalid extensions: {invalid_files_names}")
 
             self.diff_files = diff_files
+            self._extra_context_files = self._load_extra_context_files(diff_files)
             try:
                 context["diff_files"] = diff_files
             except Exception:
@@ -358,6 +365,23 @@ class GithubProvider(GitProvider):
             get_logger().error(f"Failing to get diff files: {e}",
                                artifact={"traceback": traceback.format_exc()})
             raise RateLimitExceeded("Rate limit exceeded for GitHub API.") from e
+
+    def get_extra_context_files(self) -> dict[str, str]:
+        if self._extra_context_files is not None:
+            return self._extra_context_files
+        if self.diff_files:
+            self._extra_context_files = self._load_extra_context_files(self.diff_files)
+        else:
+            self._extra_context_files = self._load_extra_context_files(self.get_diff_files())
+        return self._extra_context_files or {}
+
+    def _load_extra_context_files(self, diff_files: list[FilePatchInfo]) -> dict[str, str]:
+        if not self.pr:
+            return {}
+        return load_extra_context_files(
+            diff_files,
+            fetch_file=lambda path: self.get_pr_file_content(path, self.pr.head.sha) or None,
+        )
 
     def publish_description(self, pr_title: str, pr_body: str):
         self.pr.edit(title=pr_title, body=pr_body)

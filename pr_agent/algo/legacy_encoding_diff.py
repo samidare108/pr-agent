@@ -13,6 +13,7 @@ import difflib
 import re
 from typing import Dict, List, Union
 
+from pr_agent.algo.extra_context_files import format_extra_context_sections
 from pr_agent.algo.git_patch_processing import (
     decouple_and_convert_to_hunks_with_lines_numbers,
     extend_patch,
@@ -201,6 +202,21 @@ def build_repaired_file_sections(
     return repaired
 
 
+def _append_extra_context_sections(git_provider: GitProvider, patches_diff: str) -> str:
+    from pr_agent.algo.extra_context_files import extra_context_files_enabled
+
+    if not extra_context_files_enabled() or not patches_diff:
+        return patches_diff
+    get_extra = getattr(git_provider, "get_extra_context_files", None)
+    if not callable(get_extra):
+        return patches_diff
+    context_files = get_extra() or {}
+    extra = format_extra_context_sections(context_files)
+    if not extra:
+        return patches_diff
+    return patches_diff + extra
+
+
 def repair_prompt_diff(
     git_provider: GitProvider,
     patches_diff: str,
@@ -216,7 +232,7 @@ def repair_prompt_diff(
     Preserves per-chunk file ordering when patches_diff covers a subset of files.
     """
     if not legacy_encoding_repair_enabled() or not patches_diff:
-        return patches_diff
+        return _append_extra_context_sections(git_provider, patches_diff or "")
 
     if patch_extra_lines_before is None:
         patch_extra_lines_before = int(get_settings().config.get("patch_extra_lines_before", 0) or 0)
@@ -231,15 +247,37 @@ def repair_prompt_diff(
         patch_extra_lines_after=patch_extra_lines_after,
     )
     if not sections:
-        return patches_diff
+        return _append_extra_context_sections(git_provider, patches_diff)
 
     filenames = _ordered_filenames_from_diff(patches_diff) or list(sections.keys())
     repaired_parts = [sections[name] for name in filenames if sections.get(name)]
     if not repaired_parts:
-        return patches_diff
+        return _append_extra_context_sections(git_provider, patches_diff)
 
     get_logger().info(
         "legacy_encoding_diff: repaired prompt diff from decoded file contents",
         extra={"files": filenames},
     )
-    return "".join(repaired_parts)
+    return _append_extra_context_sections(git_provider, "".join(repaired_parts))
+
+
+def enrich_prompt_diff(
+    git_provider: GitProvider,
+    patches_diff: str,
+    *,
+    add_line_numbers_to_hunks: bool = True,
+    patch_extra_lines_before: int | None = None,
+    patch_extra_lines_after: int | None = None,
+) -> str:
+    """
+    Repair legacy encodings when enabled, then append manual/auto extra context files.
+    """
+    if legacy_encoding_repair_enabled():
+        return repair_prompt_diff(
+            git_provider,
+            patches_diff,
+            add_line_numbers_to_hunks=add_line_numbers_to_hunks,
+            patch_extra_lines_before=patch_extra_lines_before,
+            patch_extra_lines_after=patch_extra_lines_after,
+        )
+    return _append_extra_context_sections(git_provider, patches_diff)

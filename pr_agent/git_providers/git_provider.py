@@ -404,6 +404,9 @@ class GitProvider(ABC):
     def limit_output_characters(self, output: str, max_chars: int):
         return output[:max_chars] + '...' if len(output) > max_chars else output
 
+    def get_extra_context_files(self) -> dict[str, str]:
+        return getattr(self, "_extra_context_files", None) or {}
+
 
 def get_main_pr_language(languages, files) -> str:
     """
