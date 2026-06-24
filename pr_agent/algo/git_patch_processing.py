@@ -207,12 +207,25 @@ def check_if_hunk_lines_matches_to_file(i, original_lines, patch_lines, start1):
     is_valid_hunk = True
     try:
         if i + 1 < len(patch_lines) and patch_lines[i + 1][0] == ' ': # an existing line in the file
-            if patch_lines[i + 1].strip() != original_lines[start1 - 1].strip():
-                # check if different encoding is needed
-                original_line = original_lines[start1 - 1].strip()
+            orig_line = original_lines[start1 - 1].strip()
+            patch_line = patch_lines[i + 1].strip()
+            
+            if patch_line != orig_line:
+                # 【アプローチB：早乙女さん専用 EUC-JP救済パッチ】
+                import re
+                # 文字化けの影響を受ける日本語（非ASCII文字）を取り除き、英数字と記号だけで比較する
+                ascii_orig = re.sub(r'[^\x00-\x7F]+', '', orig_line)
+                ascii_patch = re.sub(r'[^\x00-\x7F]+', '', patch_line)
+
+                # コード部分（ASCII）が一致していれば、正しい行とみなしてチェック合格とする
+                if ascii_orig == ascii_patch:
+                    return True
+
+                # --- 以下、元のPR-Agentの処理 ---
+                original_line = orig_line
                 for encoding in ['iso-8859-1', 'latin-1', 'ascii', 'utf-16']:
                     try:
-                        if original_line.encode(encoding).decode().strip() == patch_lines[i + 1].strip():
+                        if original_line.encode(encoding).decode().strip() == patch_line:
                             get_logger().info(f"Detected different encoding in hunk header line {start1}, needed encoding: {encoding}")
                             return False # we still want to avoid extending the hunk. But we don't want to log an error
                     except:
