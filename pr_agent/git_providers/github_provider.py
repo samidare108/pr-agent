@@ -942,15 +942,16 @@ class GithubProvider(GitProvider):
         try:
             content = self.repo_obj.get_contents(file.filename, ref=sha).decoded_content
             # UTF-8 -> EUC-JP -> Shift-JIS の順でエラーが出ないものを探す
-            for enc in ['utf-8', 'euc_jp', 'shift_jis', 'cp932']:
+            for enc in ['utf-8', 'euc_jp', 'cp932', 'shift_jis']:
                 try:
                     return content.decode(enc)
                 except UnicodeDecodeError:
                     continue
-            # 全滅した場合は、エラーで落とさずに強制デコード
-            return content.decode('utf-8', errors='replace')
-        except Exception:
+            # 全滅した場合は、文字化けを最小限に抑えて強制デコード（エラーで落とさない）
+            return content.decode('euc_jp', errors='replace')
+        except Exception as e:
             # 404（新規ファイル等）の場合は空文字を返す
+            print(f"DEBUG: get_contents error: {e}")
             return ""
 
     def publish_labels(self, pr_types):
