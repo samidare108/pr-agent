@@ -7,6 +7,13 @@ from pr_agent.algo.types import EDIT_TYPE, FilePatchInfo
 from pr_agent.config_loader import get_settings
 from pr_agent.log import get_logger
 
+def safe_decode(byte_data: bytes) -> str:
+    if not byte_data: return ""
+    try: return byte_data.decode('utf-8')
+    except UnicodeDecodeError:
+        try: return byte_data.decode('euc_jp')
+        except UnicodeDecodeError: return byte_data.decode('utf-8', errors='replace')
+
 # Optimized: Pre-compile the hunk header regex at the module level to avoid redundant compilation
 # in performance-critical patch processing functions.
 RE_HUNK_HEADER = re.compile(
@@ -39,7 +46,7 @@ def extend_patch(original_file_str, patch_str, patch_extra_lines_before=0,
 def decode_if_bytes(original_file_str):
     if isinstance(original_file_str, (bytes, bytearray)):
         try:
-            return original_file_str.decode('utf-8')
+            return safe_decode(original_file_str)
         except UnicodeDecodeError:
             encodings_to_try = ['iso-8859-1', 'latin-1', 'ascii', 'utf-16']
             for encoding in encodings_to_try:
