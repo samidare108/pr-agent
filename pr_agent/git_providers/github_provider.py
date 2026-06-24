@@ -340,25 +340,26 @@ class GithubProvider(GitProvider):
                     try:
                         import difflib
                         
-                        # 新規ファイル（Noneや空文字）でも確実に処理させるための安全処理
                         safe_old_str = original_file_content_str if original_file_content_str else ""
                         safe_new_str = new_file_content_str if new_file_content_str else ""
                         
-                        if safe_old_str or safe_new_str:
-                            old_lines = safe_old_str.splitlines(keepends=True)
-                            new_lines = safe_new_str.splitlines(keepends=True)
-                            
-                            diff_lines = list(difflib.unified_diff(
-                                old_lines,
-                                new_lines,
-                                fromfile=file.filename,
-                                tofile=file.filename
-                            ))
-                            patch_body = [line for line in diff_lines if not (line.startswith('--- ') or line.startswith('+++ '))]
-                            if patch_body:
-                                patch = "".join(patch_body)
+                        old_lines = safe_old_str.splitlines(keepends=True)
+                        new_lines = safe_new_str.splitlines(keepends=True)
+                        
+                        diff_lines = list(difflib.unified_diff(
+                            old_lines,
+                            new_lines,
+                            fromfile=file.filename,
+                            tofile=file.filename
+                        ))
+                        patch_body = [line for line in diff_lines if not (line.startswith('--- ') or line.startswith('+++ '))]
+                        
+                        # 【最大の修正点】条件分岐を消し、GitHubの文字化けパッチを問答無用で上書きする！
+                        patch = "".join(patch_body)
+                        
                     except Exception as e:
-                        print(f"DEBUG: diff creation failed {e}")
+                        # 万が一エラーが起きても文字化けには戻さず、エラー文をAIに読ませる
+                        patch = f"DEBUG_DIFF_ERROR: {e}"
                     # ==========================================
 
                 file_patch_canonical_structure = FilePatchInfo(original_file_content_str, new_file_content_str, patch,
@@ -937,17 +938,19 @@ class GithubProvider(GitProvider):
         )
 
     def _get_pr_file_content(self, file: FilePatchInfo, sha: str) -> str:
-        # ==== 早乙女さん専用 EUC-JPファイル全体デコード処理 ====
+        # ==== 早乙女さん専用 究極のデコード処理 ====
         try:
-            # 【重要】 self.repo_obj に修正します（文字列の self.repo だとエラーになります）
             content = self.repo_obj.get_contents(file.filename, ref=sha).decoded_content
-            try:
-                return content.decode('utf-8')
-            except UnicodeDecodeError:
-                return content.decode('euc_jp')
-        except Exception as e:
-            # 404エラー（新規作成時の古いファイル取得など）の場合は空文字を返す
-            print(f"DEBUG: File not found or error. Returning empty. {e}")
+            # UTF-8 -> EUC-JP -> Shift-JIS の順でエラーが出ないものを探す
+            for enc in ['utf-8', 'euc_jp', 'shift_jis', 'cp932']:
+                try:
+                    return content.decode(enc)
+                except UnicodeDecodeError:
+                    continue
+            # 全滅した場合は、エラーで落とさずに強制デコード
+            return content.decode('utf-8', errors='replace')
+        except Exception:
+            # 404（新規ファイル等）の場合は空文字を返す
             return ""
 
     def publish_labels(self, pr_types):
