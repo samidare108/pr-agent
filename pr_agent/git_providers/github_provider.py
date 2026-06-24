@@ -339,17 +339,24 @@ class GithubProvider(GitProvider):
                     # ==== 早乙女さん専用 究極の差分再構築パッチ ====
                     try:
                         import difflib
-                        old_lines = original_file_content_str.splitlines(keepends=True) if original_file_content_str else []
-                        new_lines = new_file_content_str.splitlines(keepends=True) if new_file_content_str else []
-                        diff_lines = list(difflib.unified_diff(
-                            old_lines,
-                            new_lines,
-                            fromfile=file.filename,
-                            tofile=file.filename
-                        ))
-                        patch_body = [line for line in diff_lines if not (line.startswith('--- ') or line.startswith('+++ '))]
-                        if patch_body:
-                            patch = "".join(patch_body)
+                        
+                        # 新規ファイル（Noneや空文字）でも確実に処理させるための安全処理
+                        safe_old_str = original_file_content_str if original_file_content_str else ""
+                        safe_new_str = new_file_content_str if new_file_content_str else ""
+                        
+                        if safe_old_str or safe_new_str:
+                            old_lines = safe_old_str.splitlines(keepends=True)
+                            new_lines = safe_new_str.splitlines(keepends=True)
+                            
+                            diff_lines = list(difflib.unified_diff(
+                                old_lines,
+                                new_lines,
+                                fromfile=file.filename,
+                                tofile=file.filename
+                            ))
+                            patch_body = [line for line in diff_lines if not (line.startswith('--- ') or line.startswith('+++ '))]
+                            if patch_body:
+                                patch = "".join(patch_body)
                     except Exception as e:
                         print(f"DEBUG: diff creation failed {e}")
                     # ==========================================
